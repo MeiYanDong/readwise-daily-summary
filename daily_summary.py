@@ -11,6 +11,7 @@ import subprocess
 import urllib.request
 import xml.etree.ElementTree as ET
 import anthropic
+import urllib.parse
 from pathlib import Path
 
 # ── 加载 .env ─────────────────────────────────────────────────────────
@@ -26,9 +27,9 @@ def _load_env():
 _load_env()
 
 # ── 配置 ──────────────────────────────────────────────────────────────
-READWISE_TOKEN    = os.environ["READWISE_TOKEN"]
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+READWISE_TOKEN     = os.environ.get("READWISE_TOKEN",     "KdNIlPZ2Tus2qVqsOUpNP5PXcS1vHRfHZ97eM5h5sAWUU4HgnO")
+ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY",  "sk-9vj9M2U8pZEuWNTiiE6NARw8prlNkmx14DSO7aRc0veqsXWH")
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://yunwu.ai")
 
 RSS_SOURCES = [
     ("AINews 每日速报",    "https://news.smol.ai/rss.xml",                        3),
@@ -138,26 +139,32 @@ def summarize(raw_content, date_str):
 # ── 写入 Readwise ─────────────────────────────────────────────────────
 def save_to_readwise(summary, date_str):
     print("📥 写入 Readwise Reader...")
-    result = subprocess.run(
-        [
-            "readwise", "reader-create-document",
-            "--url",            f"https://daily-ai-summary.local/{date_str}",
-            "--title",          f"{date_str} AI 日报",
-            "--author",         "Daily Summary",
-            "--category",       "article",
-            "--tags",           "daily-summary",
-            "--published-date", date_str,
-            "--markdown",       summary,
-            "--json",
-        ],
-        capture_output=True, text=True
+    payload = json.dumps({
+        "url":            f"https://daily-ai-summary.local/{date_str}",
+        "title":          f"{date_str} AI 日报",
+        "author":         "Daily Summary",
+        "category":       "article",
+        "tags":           ["daily-summary"],
+        "published_date": date_str,
+        "html":           summary.replace("\n", "<br>"),
+    }).encode()
+    req = urllib.request.Request(
+        "https://readwise.io/api/v3/save/",
+        data=payload,
+        headers={
+            "Authorization": f"Token {READWISE_TOKEN}",
+            "Content-Type":  "application/json",
+        },
+        method="POST",
     )
-    if result.returncode == 0:
-        data = json.loads(result.stdout)
-        print(f"✅ 已保存：{data['url']}")
-        return data["url"]
-    else:
-        print(f"❌ 写入失败：{result.stderr}")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read())
+            url = f"https://read.readwise.io/read/{data['id']}"
+            print(f"✅ 已保存：{url}")
+            return url
+    except Exception as e:
+        print(f"❌ 写入失败：{e}")
         return None
 
 
