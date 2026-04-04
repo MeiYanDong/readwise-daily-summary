@@ -12,6 +12,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import anthropic
 import urllib.parse
+import markdown as md
 from pathlib import Path
 
 # ── 加载 .env ─────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ def save_to_readwise(summary, date_str):
         "category":       "article",
         "tags":           ["daily-summary"],
         "published_date": date_str,
-        "html":           summary.replace("\n", "<br>"),
+        "html":           md.markdown(summary, extensions=["extra"]),
     }).encode()
     req = urllib.request.Request(
         "https://readwise.io/api/v3/save/",
