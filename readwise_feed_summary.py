@@ -108,6 +108,9 @@ VIRTUALS_PROMPT = """
 ---
 > 信号强度：🟢 平静 / 🟡 有动作 / 🔴 重要变化
 
+---
+> 加入 Virtuals 生态：[https://app.virtuals.io/referral?code=LFfW5x](https://app.virtuals.io/referral?code=LFfW5x)
+
 ## 注意事项
 - 长文推文串：完整阅读，提炼核心论点
 - 官方周报：挑 2-3 条最重要的展开，其余放生态动态
