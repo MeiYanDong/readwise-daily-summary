@@ -6,6 +6,7 @@ Readwise Reader Feed 每日总结
 
 import os
 import json
+import re
 import datetime
 import urllib.request
 import markdown as md
@@ -54,6 +55,65 @@ SUMMARY_PROMPT = """
 - 语言跟随 feed 内容的主要语言，简洁直接，不加评论不推荐行动。
 """
 
+# Virtuals Protocol 专属 list ID
+VIRTUALS_LIST_ID = "2019389311423246562"
+
+VIRTUALS_PROMPT = """
+## 角色
+你是 Virtuals Protocol 的生态观察者，为关注但不深入跟踪这个项目的大众读者写每日动态。
+你的读者画像：知道 Virtuals 是什么，可能持有 $VIRTUAL，但不会每天刷推特。他们需要你帮他们回答一个问题：**"今天 Virtuals 有什么值得知道的事？"**
+
+## 项目背景（不要在输出中重复，仅作为你的分析基础）
+- Virtuals Protocol：Base 链上最大的 AI Agent 经济基础设施，18000+ agents
+- 核心协议：ACP（Agent Commerce Protocol），让 AI Agent 之间可以自主交易
+- 代币：$VIRTUAL，2025年初高点 $5+，目前约 $0.67
+- 最新战略：Eastworlds（具身 AI / 机器人加速器）
+- 竞品：ai16z 等 AI Agent 平台
+
+## 任务
+基于推文内容，写一份让普通关注者 3 分钟读完、读完能跟别人聊的动态简报。
+
+## 核心原则
+
+### 排序逻辑（按决策价值从高到低）
+1. **"这件事改变了 Virtuals 的故事"** — 新赛道、重大合作、协议级变化
+2. **"这件事证明 Virtuals 在往前走"** — 可量化的进展、里程碑达成
+3. **"这件事值得留意但还没定论"** — 有潜力但需要后续验证的信号
+4. **背景补充** — 丰富理解但不紧急的信息
+
+### 写作要求
+- **一件事说三句话就够**：发生了什么 → 为什么重要 → 一句判断
+- **说人话**：避免 "alpha"、"thesis"、"narrative" 这类圈内黑话，用普通人能懂的表达
+- **有观点但不武断**：给判断，但标注你不确定的地方
+- **识别重复叙事**：如果官方连续多天推同一件事，直接说"这件事上周已经公布，今天没有新进展"
+- **引用原文金句**：保留推文中最有力的原话
+- **噪音直接跳过**：meme、无意义数字、纯互动不出现在输出中
+
+## 输出结构
+
+# [日期] Virtuals Protocol 动态
+
+> **一句话总结**：（读完整篇后能跟朋友说的一句话）
+
+## 今日重点（最多 3 条，按重要性排序）
+
+### 1. [标题]
+[发生了什么] → [为什么重要] → [你的判断]
+→ [链接](https://twitter.com/xxx/status/xxx)
+
+## 生态动态
+- [标签] 一句话 → [链接]
+（标签：🛠产品 / 📊数据 / 🤝合作 / 📋合规）
+
+---
+> 信号强度：🟢 平静 / 🟡 有动作 / 🔴 重要变化
+
+## 注意事项
+- 长文推文串：完整阅读，提炼核心论点
+- 官方周报：挑 2-3 条最重要的展开，其余放生态动态
+- 内容不足时直接说"今天没什么大事"
+"""
+
 
 # ── 拉取 feed 文档列表 ────────────────────────────────────────────────
 def fetch_feed_docs(date_str):
@@ -86,10 +146,35 @@ def fetch_feed_docs(date_str):
     return docs
 
 
+# ── 按 Twitter List 分组 ──────────────────────────────────────────────
+def group_by_twitter_list(docs):
+    """
+    返回 { list_id: {"name": str, "docs": [...]} }
+    非 Twitter List 的 feed 归入 key=None
+    """
+    groups = {}
+    for doc in docs:
+        src = doc.get("source_url", "")
+        m = re.search(r"lists/(\d+)", src)
+        if m:
+            lid = m.group(1)
+            if lid not in groups:
+                # 从 title 提取 list 名，格式: "{name} Twitter List: ..."
+                raw_title = doc.get("title", "")
+                name = re.sub(r"\s*Twitter List:.*", "", raw_title).strip() or lid
+                groups[lid] = {"name": name, "docs": []}
+            groups[lid]["docs"].append(doc)
+        else:
+            if None not in groups:
+                groups[None] = {"name": "其他 Feed", "docs": []}
+            groups[None]["docs"].append(doc)
+    return groups
+
+
 # ── 获取文档完整全文 ──────────────────────────────────────────────────
 def fetch_doc_full(doc_id):
     req = urllib.request.Request(
-        f"https://readwise.io/api/v3/list/?id={doc_id}",
+        f"https://readwise.io/api/v3/list/?id={doc_id}&withHtmlContent=true",
         headers={"Authorization": f"Token {READWISE_TOKEN}"},
     )
     with urllib.request.urlopen(req) as resp:
@@ -110,9 +195,9 @@ def build_content(docs, date_str):
 
         # 用 CLI 拿完整内容
         full = fetch_doc_full(doc_id)
-        content = full.get("content", "") or doc.get("content", "") or doc.get("summary", "")
+        content = full.get("html_content", "") or full.get("content", "") or doc.get("content", "") or doc.get("summary", "")
 
-        body = content[:5000] if len(content) > 5000 else content
+        body = content[:15000] if len(content) > 15000 else content
 
         parts.append(
             f"### [{title}]({url})\n"
@@ -125,12 +210,13 @@ def build_content(docs, date_str):
 
 
 # ── Claude 总结 ───────────────────────────────────────────────────────
-def summarize(raw_content, date_str):
+def summarize(raw_content, date_str, prompt=None):
     print("🤖 Claude 生成总结...")
+    prompt = prompt or SUMMARY_PROMPT
     payload = json.dumps({
         "model": "claude-opus-4-6",
         "max_tokens": 4096,
-        "messages": [{"role": "user", "content": f"{SUMMARY_PROMPT}\n\n{raw_content}"}]
+        "messages": [{"role": "user", "content": f"{prompt}\n\n{raw_content}"}]
     }).encode()
     req = urllib.request.Request(
         "https://yunwu.ai/v1/messages",
@@ -148,11 +234,13 @@ def summarize(raw_content, date_str):
 
 
 # ── 写回 Readwise ─────────────────────────────────────────────────────
-def save_to_readwise(summary, date_str):
+def save_to_readwise(summary, date_str, list_name=None, list_id=None):
     print("📥 写入 Readwise Reader...")
+    slug = list_id or "all"
+    title = f"{date_str} {list_name} 总结" if list_name else f"{date_str} Feed 总结"
     payload = json.dumps({
-        "url":            f"https://readwise-feed-summary.local/{date_str}",
-        "title":          f"{date_str} Feed 总结",
+        "url":            f"https://readwise-feed-summary.local/{date_str}/{slug}",
+        "title":          title,
         "author":         "Feed Summary",
         "category":       "article",
         "tags":           ["feed-summary"],
@@ -191,14 +279,24 @@ def main():
         print("⚠️  当日无 feed 内容")
         return
 
+    # 1. 全量 feed 通用总结
+    print("\n── 全量 Feed 总结 ──")
     raw = build_content(docs, date_str)
     summary = summarize(raw, date_str)
-
-    print("\n" + "─" * 60)
-    print(summary)
-    print("─" * 60 + "\n")
-
     save_to_readwise(summary, date_str)
+
+    # 2. Virtuals Protocol 专属总结
+    virtuals_docs = [
+        d for d in docs
+        if VIRTUALS_LIST_ID in (d.get("source_url") or "")
+    ]
+    if virtuals_docs:
+        print(f"\n── Virtuals Protocol 专属总结（{len(virtuals_docs)} 条）──")
+        raw_v = build_content(virtuals_docs, date_str)
+        summary_v = summarize(raw_v, date_str, prompt=VIRTUALS_PROMPT)
+        save_to_readwise(summary_v, date_str, list_name="Virtuals Protocol", list_id=VIRTUALS_LIST_ID)
+    else:
+        print("\n⚠️  当日无 Virtuals Protocol feed")
 
 
 if __name__ == "__main__":
