@@ -204,9 +204,12 @@ def main():
     ]
     if virtuals_docs:
         print(f"\n── Virtuals Protocol 专属总结（{len(virtuals_docs)} 条）──")
-        raw_v = build_content(virtuals_docs, date_str)
-        summary_v = summarize(raw_v, date_str, prompt=VIRTUALS_PROMPT)
-        save_to_readwise(summary_v, date_str, list_name="Virtuals Protocol", list_id=VIRTUALS_LIST_ID)
+        try:
+            raw_v = build_content(virtuals_docs, date_str)
+            summary_v = summarize(raw_v, date_str, prompt=VIRTUALS_PROMPT)
+            save_to_readwise(summary_v, date_str, list_name="Virtuals Protocol", list_id=VIRTUALS_LIST_ID)
+        except Exception as e:
+            print(f"⚠️  Virtuals 总结失败（不影响主流程）: {e}")
     else:
         print("\n⚠️  当日无 Virtuals Protocol feed")
 
