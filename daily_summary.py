@@ -40,37 +40,7 @@ RSS_SOURCES = [
     ("arXiv cs.AI",        "https://export.arxiv.org/rss/cs.AI",                   5),
 ]
 
-SUMMARY_PROMPT = """
-## 角色
-你是一名信息整理助手，擅长从碎片化的每日信息流（RSS、论文、技术博客等）中提炼当日的信息全景。
-目标：帮读者在 3 分钟内掌握"今天 AI 领域发生了什么"。
-
-## 任务
-将下方的 RSS 内容整理为一份每日信息总结。
-
-## 核心要求
-- **按主题聚类**：将内容按话题归类（如 模型发布、工程工具、行业动态、值得思考 等），不按来源罗列
-- **区分信号与噪声**：突出有信息量的内容，忽略纯广告、招聘、重复信息
-- **保留原始表达**：引用原文中有力的表达和关键术语，不要过度改写
-- **必须附链接**：每条信息后附原文链接，格式 `→ [链接](url)`
-- **简洁为上**：每条用 1-2 句话概括，抓重点
-
-## 输出格式
-
-# [日期] AI 日报
-
-## 📌 今日值得细读
-- **[标题]** — 一句话说明价值 → [链接](url)
-
-## [主题一]
-- 要点 → [链接](url)
-
-## [主题二]
-- 要点 → [链接](url)
-
----
-> 来源：X 个 RSS 源 | 共 Y 条内容
-"""
+SUMMARY_PROMPT = (Path(__file__).parent / "daily_summary_prompt.md").read_text(encoding="utf-8")
 
 # ── 抓取 RSS ──────────────────────────────────────────────────────────
 def fetch_rss(name, url, limit):
@@ -171,12 +141,15 @@ def save_to_readwise(summary, date_str):
 
 # ── 主流程 ────────────────────────────────────────────────────────────
 def main():
-    # 默认总结昨天（保证内容完整），传参 --today 则总结今天
+    # 用北京时间（UTC+8）计算日期，避免 GitHub Actions UTC 环境下日期偏差
     import sys
+    tz_bj = datetime.timezone(datetime.timedelta(hours=8))
+    today_bj = datetime.datetime.now(tz_bj).date()
+
     if "--today" in sys.argv:
-        target = datetime.date.today()
+        target = today_bj
     else:
-        target = datetime.date.today() - datetime.timedelta(days=1)
+        target = today_bj - datetime.timedelta(days=1)
 
     date_str = target.isoformat()
     print(f"\n🗓  生成 {date_str} 的 AI 日报\n")
