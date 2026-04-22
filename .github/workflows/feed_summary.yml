@@ -26,4 +26,6 @@ jobs:
           READWISE_TOKEN:     ${{ secrets.READWISE_TOKEN }}
           ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          YUNWU_API_KEY:      ${{ secrets.YUNWU_API_KEY }}
+          YUNWU_BASE_URL:     ${{ secrets.YUNWU_BASE_URL }}
         run: python readwise_feed_summary.py

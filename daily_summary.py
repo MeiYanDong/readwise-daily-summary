@@ -29,8 +29,10 @@ _load_env()
 
 # ── 配置 ──────────────────────────────────────────────────────────────
 READWISE_TOKEN     = os.environ.get("READWISE_TOKEN",     "KdNIlPZ2Tus2qVqsOUpNP5PXcS1vHRfHZ97eM5h5sAWUU4HgnO")
-ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY",  "sk-9vj9M2U8pZEuWNTiiE6NARw8prlNkmx14DSO7aRc0veqsXWH")
-ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://yunwu.ai")
+ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY",  "sk-ba2c4b97b557cdd63857ae31ccb37e3ae30c4e7f8c1b93dd0ed65e14486be255")
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://xuedingtoken.com")
+YUNWU_API_KEY      = os.environ.get("YUNWU_API_KEY",      "sk-9vj9M2U8pZEuWNTiiE6NARw8prlNkmx14DSO7aRc0veqsXWH")
+YUNWU_BASE_URL     = os.environ.get("YUNWU_BASE_URL",     "https://yunwu.ai")
 
 RSS_SOURCES = [
     ("AINews 每日速报",    "https://news.smol.ai/rss.xml",                        3),
@@ -92,19 +94,21 @@ def collect_feeds():
 # ── Claude 总结 ───────────────────────────────────────────────────────
 def summarize(raw_content, date_str):
     print("🤖 Claude 生成总结...")
-    client = anthropic.Anthropic(
-        api_key=ANTHROPIC_API_KEY,
-        base_url=ANTHROPIC_BASE_URL,
-    )
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=4096,
-        messages=[{
-            "role": "user",
-            "content": f"{SUMMARY_PROMPT}\n\n## 今日内容（{date_str}）\n{raw_content}"
-        }]
-    )
-    return message.content[0].text
+    messages = [{"role": "user", "content": f"{SUMMARY_PROMPT}\n\n## 今日内容（{date_str}）\n{raw_content}"}]
+
+    def _call(api_key, base_url):
+        client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
+        return client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=4096,
+            messages=messages,
+        ).content[0].text
+
+    try:
+        return _call(ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL)
+    except (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.APIStatusError) as e:
+        print(f"⚠️  xueding 请求失败，切换云雾重试: {e}")
+        return _call(YUNWU_API_KEY, YUNWU_BASE_URL)
 
 
 # ── 写入 Readwise ─────────────────────────────────────────────────────

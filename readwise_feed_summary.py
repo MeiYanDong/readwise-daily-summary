@@ -8,13 +8,19 @@ import os
 import json
 import re
 import datetime
+import socket
 import urllib.request
+import urllib.error
 import markdown as md
 from pathlib import Path
 
 READWISE_TOKEN     = os.environ.get("READWISE_TOKEN")     or "KdNIlPZ2Tus2qVqsOUpNP5PXcS1vHRfHZ97eM5h5sAWUU4HgnO"
-ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY")  or "sk-9vj9M2U8pZEuWNTiiE6NARw8prlNkmx14DSO7aRc0veqsXWH"
-ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL") or "https://yunwu.ai"
+ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY")  or "sk-ba2c4b97b557cdd63857ae31ccb37e3ae30c4e7f8c1b93dd0ed65e14486be255"
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL") or "https://xuedingtoken.com"
+YUNWU_API_KEY      = os.environ.get("YUNWU_API_KEY")      or "sk-9vj9M2U8pZEuWNTiiE6NARw8prlNkmx14DSO7aRc0veqsXWH"
+YUNWU_BASE_URL     = os.environ.get("YUNWU_BASE_URL")     or "https://yunwu.ai"
+
+API_TIMEOUT = 120
 
 SUMMARY_PROMPT = (Path(__file__).parent / "daily_feed_summary_prompt.md").read_text(encoding="utf-8")
 
@@ -119,6 +125,22 @@ def build_content(docs, date_str):
 
 
 # ── Claude 总结 ───────────────────────────────────────────────────────
+def _call_claude(api_key, base_url, payload):
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/v1/messages",
+        data=payload,
+        headers={
+            "x-api-key":         api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type":      "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+        data = json.loads(resp.read())
+    return data["content"][0]["text"]
+
+
 def summarize(raw_content, date_str, prompt=None):
     print("🤖 Claude 生成总结...")
     prompt = prompt or SUMMARY_PROMPT
@@ -127,19 +149,12 @@ def summarize(raw_content, date_str, prompt=None):
         "max_tokens": 4096,
         "messages": [{"role": "user", "content": f"{prompt}\n\n{raw_content}"}]
     }).encode()
-    req = urllib.request.Request(
-        "https://yunwu.ai/v1/messages",
-        data=payload,
-        headers={
-            "x-api-key":         ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "Content-Type":      "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read())
-    return data["content"][0]["text"]
+
+    try:
+        return _call_claude(ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, payload)
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+        print(f"⚠️  xueding 请求失败，切换云雾重试: {e}")
+        return _call_claude(YUNWU_API_KEY, YUNWU_BASE_URL, payload)
 
 
 # ── 写回 Readwise ─────────────────────────────────────────────────────
