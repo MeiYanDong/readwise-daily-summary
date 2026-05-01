@@ -9,6 +9,6 @@ mkdir -p "$(dirname "$LOG")"
 echo "────────────────────────────" >> "$LOG"
 echo "$(date '+%Y-%m-%d %H:%M:%S') 开始运行" >> "$LOG"
 
-/usr/bin/python3 /Users/myandong/Projects/Readwise/daily_summary.py >> "$LOG" 2>&1
+/Users/myandong/Projects/Readwise/venv/bin/python /Users/myandong/Projects/Readwise/daily_summary.py >> "$LOG" 2>&1
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') 运行完成" >> "$LOG"

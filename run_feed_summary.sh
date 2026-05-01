@@ -11,6 +11,6 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') 开始运行" >> "$LOG"
 
 cd /Users/myandong/Projects/Readwise
 unset ANTHROPIC_API_KEY
-/usr/bin/python3 readwise_feed_summary.py >> "$LOG" 2>&1
+/Users/myandong/Projects/Readwise/venv/bin/python readwise_feed_summary.py >> "$LOG" 2>&1
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') 运行完成" >> "$LOG"
