@@ -7,6 +7,7 @@ Readwise Reader Feed 每日总结
 import os
 import json
 import re
+import time
 import datetime
 import socket
 import urllib.request
@@ -86,16 +87,32 @@ def group_by_twitter_list(docs):
     return groups
 
 
-# ── 获取文档完整全文 ──────────────────────────────────────────────────
-def fetch_doc_full(doc_id):
+# ── 获取文档完整全文（带限流和重试）──────────────────────────────────
+def fetch_doc_full(doc_id, retries=5):
     req = urllib.request.Request(
         f"https://readwise.io/api/v3/list/?id={doc_id}&withHtmlContent=true",
         headers={"Authorization": f"Token {READWISE_TOKEN}"},
     )
-    with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read())
-    results = data.get("results", [])
-    return results[0] if results else {}
+    for attempt in range(retries):
+        try:
+            time.sleep(1)  # 限流：每次请求间隔 1s
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+            results = data.get("results", [])
+            return results[0] if results else {}
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < retries - 1:
+                wait = min(5 * (2 ** attempt), 60)  # 5s, 10s, 20s, 40s
+                print(f"    ⏳ Readwise 限流，等待 {wait}s 后重试...")
+                time.sleep(wait)
+            else:
+                raise
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+            if attempt < retries - 1:
+                print(f"    ⏳ 网络错误，等待 2s 后重试: {e}")
+                time.sleep(2)
+            else:
+                raise
 
 
 # ── 组合所有内容为文本 ────────────────────────────────────────────────
@@ -124,21 +141,30 @@ def build_content(docs, date_str):
     return f"## {date_str} 的 Reader Feed 内容\n\n" + "\n---\n".join(parts)
 
 
-# ── Claude 总结 ───────────────────────────────────────────────────────
-def _call_claude(api_key, base_url, payload):
-    req = urllib.request.Request(
-        f"{base_url.rstrip('/')}/v1/messages",
-        data=payload,
-        headers={
-            "x-api-key":         api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type":      "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
-        data = json.loads(resp.read())
-    return data["content"][0]["text"]
+# ── Claude 总结（带重试）─────────────────────────────────────────────
+def _call_claude(api_key, base_url, payload, retries=2):
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(
+                f"{base_url.rstrip('/')}/v1/messages",
+                data=payload,
+                headers={
+                    "x-api-key":         api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type":      "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+                data = json.loads(resp.read())
+            return data["content"][0]["text"]
+        except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+            if attempt < retries - 1:
+                wait = 5 * (attempt + 1)
+                print(f"    ⏳ API 请求失败，等待 {wait}s 后重试: {e}")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def summarize(raw_content, date_str, prompt=None):
@@ -152,7 +178,7 @@ def summarize(raw_content, date_str, prompt=None):
 
     try:
         return _call_claude(ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, payload)
-    except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, socket.timeout) as e:
         print(f"⚠️  xueding 请求失败，切换云雾重试: {e}")
         return _call_claude(YUNWU_API_KEY, YUNWU_BASE_URL, payload)
 

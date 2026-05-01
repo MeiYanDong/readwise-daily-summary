@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install anthropic markdown
+        run: pip install markdown
 
       - name: Run feed summary
         env:
