@@ -96,13 +96,23 @@ def summarize(raw_content, date_str):
     print("🤖 Claude 生成总结...")
     messages = [{"role": "user", "content": f"{SUMMARY_PROMPT}\n\n## 今日内容（{date_str}）\n{raw_content}"}]
 
-    def _call(api_key, base_url):
+    def _call(api_key, base_url, retries=2):
         client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
-        return client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=4096,
-            messages=messages,
-        ).content[0].text
+        import time
+        for attempt in range(retries):
+            try:
+                return client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=4096,
+                    messages=messages,
+                ).content[0].text
+            except anthropic.RateLimitError as e:
+                if attempt < retries - 1:
+                    wait = 10 * (attempt + 1)
+                    print(f"    ⏳ 限流，等待 {wait}s 后重试: {e}")
+                    time.sleep(wait)
+                else:
+                    raise
 
     try:
         return _call(ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL)

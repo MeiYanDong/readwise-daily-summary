@@ -171,7 +171,7 @@ def summarize(raw_content, date_str, prompt=None):
     print("🤖 Claude 生成总结...")
     prompt = prompt or SUMMARY_PROMPT
     payload = json.dumps({
-        "model": "claude-opus-4-6",
+        "model": "claude-sonnet-4-20250514",
         "max_tokens": 4096,
         "messages": [{"role": "user", "content": f"{prompt}\n\n{raw_content}"}]
     }).encode()
